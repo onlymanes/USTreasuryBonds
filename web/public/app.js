@@ -1,5 +1,5 @@
 const SERIES_META = {
-  ACMTP10: "ACM Term Premium (10Y)",
+  THREEFYTP10: "10Y Term Premium (proxy for ACM)",
   DGS10: "10Y Treasury Yield",
   DGS30: "30Y Treasury Yield",
   DFII10: "10Y Real Yield",
@@ -57,7 +57,7 @@ async function loadJson(p) {
 
 function renderSeriesCard(id, payload) {
   const name = SERIES_META[id] || id;
-  const data = payload.data || [];
+  const data = payload?.data || [];
   const { last, prev, delta, pct } = calcWoW(data);
 
   const rows = data.slice().reverse().slice(0, 40)
@@ -120,7 +120,7 @@ async function renderAll() {
   }
 
   // TLT 信号
-  const acmtp10 = store.ACMTP10?.data?.at(-1)?.value;
+  const acmtp10 = store.THREEFYTP10?.data?.at(-1)?.value;
   const dgs10 = store.DGS10?.data?.at(-1)?.value;
   const vix = store.VIXCLS?.data?.at(-1)?.value;
 
@@ -135,14 +135,16 @@ async function renderAll() {
     reasons.length ? `触发因素：${reasons.join("；")}` : "";
 
   // 8 个卡片
-  const grid = document.getElementById("grid");
-  grid.innerHTML = Object.keys(SERIES_META)
+  const ids = index.series;
+
+  // grid
+  grid.innerHTML = ids
     .map(id => renderSeriesCard(id, store[id]))
     .join("");
 
-  // 画图
-  for (const id of Object.keys(SERIES_META)) {
-    drawChart(id, SERIES_META[id], store[id].data || []);
+  // charts
+  for (const id of ids) {
+    drawChart(id, SERIES_META[id] || id, store[id]?.data || []);
   }
 }
 
