@@ -8,25 +8,34 @@ if (!API_KEY) {
 }
 
 const SERIES = ["THREEFYTP10","DGS10","DGS30","DFII10","T10YIE","T10Y2Y","GFDEBTN","VIXCLS"];
-const MAX_WEEKS = 166;
+const MAX_POINTS = 166;
+
+// GFDEBTN 不支持 frequency=w，必须用原始频率（空）/或 q/sa/a
+const SERIES_FREQ = {
+  GFDEBTN: "" // 原始频率（不要 frequency 参数）
+};
 
 // 输出到：web/public/data
 const OUT_DIR = path.resolve("web/public/data");
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
-async function fetchFredWeekly(seriesId) {
+async function fetchFred(seriesId) {
+  const freq = Object.prototype.hasOwnProperty.call(SERIES_FREQ, seriesId)
+    ? SERIES_FREQ[seriesId]
+    : "w";
+
+  const freqParam = freq === "" ? "" : `&frequency=${encodeURIComponent(freq)}`;
+
   const url =
     `https://api.stlouisfed.org/fred/series/observations` +
     `?series_id=${encodeURIComponent(seriesId)}` +
     `&api_key=${encodeURIComponent(API_KEY)}` +
     `&file_type=json` +
-    `&frequency=w` +
+    `${freqParam}` +
     `&sort_order=desc` +
-    `&limit=${MAX_WEEKS}`;
+    `&limit=${MAX_POINTS}`;
 
   const res = await fetch(url);
-
-  // 如果错误，把 body 打出来（便于定位：无效key/series/限流等）
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`FRED fetch failed: ${seriesId} ${res.status} ${text}`);
@@ -38,10 +47,11 @@ async function fetchFredWeekly(seriesId) {
     .filter(o => o.value !== ".")
     .map(o => ({ date: o.date, value: Number(o.value) }))
     .reverse()
-    .slice(-MAX_WEEKS);
+    .slice(-MAX_POINTS);
 
   return {
     seriesId,
+    freq: freq === "" ? "native" : freq,
     updatedAt: new Date().toISOString(),
     points: data.length,
     data
@@ -51,7 +61,7 @@ async function fetchFredWeekly(seriesId) {
 let changed = false;
 
 for (const id of SERIES) {
-  const payload = await fetchFredWeekly(id);
+  const payload = await fetchFred(id);
   const file = path.join(OUT_DIR, `${id}.json`);
 
   const next = JSON.stringify(payload, null, 2) + "\n";
@@ -66,7 +76,7 @@ for (const id of SERIES) {
   }
 }
 
-// 生成一个索引文件（方便前端一次性知道更新时间）
+// 索引文件
 const indexFile = path.join(OUT_DIR, `_index.json`);
 const indexPayload = {
   updatedAt: new Date().toISOString(),
