@@ -6,6 +6,7 @@ const SERIES_META = {
   T10YIE: "10Y Inflation Expectation",
   T10Y2Y: "10Y-2Y Spread",
   GFDEBTN: "US Federal Debt",
+  GFDEBTN_DELTA: "US Federal Debt Δ (current - previous)",
   VIXCLS: "VIX"
 };
 
@@ -110,6 +111,18 @@ function drawChart(id, label, data) {
   });
 }
 
+function toDeltaSeries(levelSeries) {
+  const s = levelSeries || [];
+  const out = [];
+  for (let i = 1; i < s.length; i++) {
+    const prev = s[i - 1]?.value;
+    const cur = s[i]?.value;
+    if (prev === undefined || cur === undefined) continue;
+    out.push({ date: s[i].date, value: cur - prev });
+  }
+  return out;
+}
+
 async function renderAll() {
   const index = await loadJson("./data/_index.json");
   document.getElementById("updatedAt").textContent = index.updatedAt || "-";
@@ -118,6 +131,15 @@ async function renderAll() {
   for (const id of index.series) {
     store[id] = await loadJson(`./data/${id}.json`);
   }
+
+  const debtLevel = store.GFDEBTN?.data || [];
+  const debtDelta = toDeltaSeries(debtLevel);
+  store.GFDEBTN_DELTA = {
+    seriesId: "GFDEBTN_DELTA",
+    updatedAt: store.GFDEBTN?.updatedAt || new Date().toISOString(),
+    points: debtDelta.length,
+    data: debtDelta
+  };
 
   // TLT 信号
   const acmtp10 = store.THREEFYTP10?.data?.at(-1)?.value;
@@ -135,7 +157,7 @@ async function renderAll() {
     reasons.length ? `触发因素：${reasons.join("；")}` : "";
 
   // 8 个卡片
-  const ids = index.series;
+  const ids = [...index.series, "GFDEBTN_DELTA"];
 
   // grid
   grid.innerHTML = ids
