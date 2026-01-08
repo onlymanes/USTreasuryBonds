@@ -25,6 +25,19 @@ function calcWoW(data) {
   return { last, prev, delta, pct };
 }
 
+function lastNYears(data, years = 3) {
+  const arr = data || [];
+  if (!arr.length) return arr;
+
+  const end = new Date(arr.at(-1).date);
+  if (Number.isNaN(end.getTime())) return arr;
+
+  const start = new Date(end);
+  start.setFullYear(start.getFullYear() - years);
+
+  return arr.filter(d => new Date(d.date) >= start);
+}
+
 function tltDecision({ acmtp10, dgs10, vix }) {
   // 你之前那套框架：期限溢价 + 长端利率 + 风险偏好(VIX)
   const reasons = [];
@@ -132,6 +145,13 @@ async function renderAll() {
     store[id] = await loadJson(`./data/${id}.json`);
   }
 
+  // 仅对 GFDEBTN：裁剪为最近3年（其他 series 不变）
+  if (store.GFDEBTN?.data?.length) {
+    store.GFDEBTN.data = lastNYears(store.GFDEBTN.data, 3);
+    store.GFDEBTN.points = store.GFDEBTN.data.length;
+  }
+
+  // GFDEBTN Δ：基于“裁剪后的 GFDEBTN”生成（自然也是最近3年）
   const debtLevel = store.GFDEBTN?.data || [];
   const debtDelta = toDeltaSeries(debtLevel);
   store.GFDEBTN_DELTA = {
