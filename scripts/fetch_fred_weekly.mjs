@@ -25,11 +25,14 @@ async function fetchFredWeekly(seriesId) {
     `&limit=${MAX_WEEKS}`;
 
   const res = await fetch(url);
+
+  // 如果错误，把 body 打出来（便于定位：无效key/series/限流等）
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`FRED fetch failed: ${seriesId} ${res.status} ${text}`);
   }
-  const data = await res.json();
+
+  const json = await res.json();
 
   const data = (json.observations || [])
     .filter(o => o.value !== ".")
@@ -71,9 +74,10 @@ const indexPayload = {
 };
 const nextIndex = JSON.stringify(indexPayload, null, 2) + "\n";
 const prevIndex = fs.existsSync(indexFile) ? fs.readFileSync(indexFile, "utf8") : "";
+
 if (prevIndex !== nextIndex) {
   fs.writeFileSync(indexFile, nextIndex, "utf8");
   changed = true;
 }
 
-process.exit(changed ? 0 : 0);
+process.exit(0);
