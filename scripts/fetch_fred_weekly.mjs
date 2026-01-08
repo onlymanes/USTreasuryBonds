@@ -7,7 +7,7 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const SERIES = ["ACMTP10","DGS10","DGS30","DFII10","T10YIE","T10Y2Y","GFDEBTN","VIXCLS"];
+const SERIES = ["THREEFYTP10","DGS10","DGS30","DFII10","T10YIE","T10Y2Y","GFDEBTN","VIXCLS"];
 const MAX_WEEKS = 166;
 
 // 输出到：web/public/data
@@ -25,8 +25,11 @@ async function fetchFredWeekly(seriesId) {
     `&limit=${MAX_WEEKS}`;
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`FRED fetch failed: ${seriesId} ${res.status}`);
-  const json = await res.json();
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`FRED fetch failed: ${seriesId} ${res.status} ${text}`);
+  }
+  const data = await res.json();
 
   const data = (json.observations || [])
     .filter(o => o.value !== ".")
