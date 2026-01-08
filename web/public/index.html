@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>USTreasuryBonds Dashboard</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>USTreasuryBonds — Weekly Macro Dashboard</h1>
+
+    <div class="toolbar">
+      <button id="reloadBtn">刷新页面数据（重新拉取JSON）</button>
+      <div class="muted">数据由 GitHub Actions 每周更新；也可在 GitHub Actions 手动 Run workflow 更新。</div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <span id="tltLight" class="status"></span>
+        <div>
+          <div><b>TLT 建议：</b><span id="tltAction"></span></div>
+          <div class="muted" id="tltMetrics"></div>
+          <div class="muted" id="tltReason"></div>
+        </div>
+      </div>
+      <div class="muted" style="margin-top:8px;">
+        <b>数据更新时间：</b><span id="updatedAt">-</span>
+      </div>
+    </div>
+
+    <div id="grid" class="grid"></div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
