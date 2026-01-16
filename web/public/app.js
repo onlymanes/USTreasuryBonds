@@ -6,7 +6,6 @@ const SERIES_META = {
   T10YIE: "10Y Inflation Expectation",
   T10Y2Y: "10Y-2Y Spread",
   GFDEBTN: "US Federal Debt",
-  GFDEBTN_DELTA: "US Federal Debt Δ (current - previous)",
   VIXCLS: "VIX"
 };
 
@@ -106,20 +105,93 @@ function renderSeriesCard(id, payload) {
   `;
 }
 
-function drawChart(id, label, data) {
+function drawChart(id, label, data, extraData = null, extraLabel = null) {
   const canvas = document.getElementById(`c_${id}`);
   if (!canvas) return;
+
+  // 如果有旧的图表实例，先销毁（防止重绘叠加）
+  const existingChart = Chart.getChart(canvas);
+  if (existingChart) existingChart.destroy();
+
+  const labels = data.map(d => d.date);
+  const mainDataset = {
+    type: 'line',
+    label: label,
+    data: data.map(d => d.value),
+    borderColor: 'rgb(54, 162, 235)', // 蓝色
+    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+    borderWidth: 2,
+    yAxisID: 'y', // 绑定左轴
+    order: 1 // 层级：在上层
+  };
+
+  const datasets = [mainDataset];
+  const scales = {
+    x: { ticks: { maxTicksLimit: 8 } },
+    y: {
+      type: 'linear',
+      display: true,
+      position: 'left',
+      title: { display: true, text: 'Total Debt' }
+    }
+  };
+
+  // 如果存在第二组数据 (Delta)
+  if (extraData) {
+    // 数据对齐：因为Delta比Level少一个点(第一个点无法计算差值)，需要前面补null
+    // 或者假设传入的数据已经是清洗对齐过的。这里做一个简单的日期匹配逻辑：
+    const valueMap = new Map(extraData.map(d => [d.date, d.value]));
+    const alignedExtraData = labels.map(date => valueMap.get(date) ?? null);
+
+    datasets.push({
+      type: 'bar', // 增量用柱状图更直观
+      label: extraLabel || 'Delta',
+      data: alignedExtraData,
+      backgroundColor: 'rgba(255, 99, 132, 0.5)', // 红色半透明
+      borderColor: 'rgb(255, 99, 132)',
+      borderWidth: 1,
+      yAxisID: 'y1', // 绑定右轴
+      order: 2 // 层级：在下层
+    });
+
+    // 配置右轴
+    scales.y1 = {
+      type: 'linear',
+      display: true,
+      position: 'right',
+      grid: { drawOnChartArea: false }, // 避免网格线混乱，右轴不画网格
+      title: { display: true, text: 'Change (Delta)' }
+    };
+  }
+
   new Chart(canvas, {
-    type: "line",
+    type: 'line', // 默认类型，但在 dataset 里混合了 bar
     data: {
-      labels: data.map(d => d.date),
-      datasets: [{ label, data: data.map(d => d.value), borderWidth: 2 }]
+      labels: labels,
+      datasets: datasets
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: true } },
-      scales: { x: { ticks: { maxTicksLimit: 8 } } }
+      interaction: {
+        mode: 'index', // 鼠标悬停时同时显示两个数据
+        intersect: false,
+      },
+      plugins: {
+        legend: { display: true },
+        tooltip: {
+          callbacks: {
+            // 格式化 tooltip 数值
+            label: function(context) {
+              let label = context.dataset.label || '';
+              if (label) label += ': ';
+              if (context.parsed.y !== null) label += fmt(context.parsed.y);
+              return label;
+            }
+          }
+        }
+      },
+      scales: scales
     }
   });
 }
@@ -145,23 +217,23 @@ async function renderAll() {
     store[id] = await loadJson(`./data/${id}.json`);
   }
 
-  // 仅对 GFDEBTN：裁剪为最近3年（其他 series 不变）
+  // --- 特殊处理 GFDEBTN ---
   if (store.GFDEBTN?.data?.length) {
+    // 1. 裁剪为最近3年
     store.GFDEBTN.data = lastNYears(store.GFDEBTN.data, 3);
     store.GFDEBTN.points = store.GFDEBTN.data.length;
+
+    // 2. 计算 Delta (不作为单独卡片，而是作为 GFDEBTN 的附加数据)
+    const debtLevel = store.GFDEBTN.data;
+    const debtDelta = toDeltaSeries(debtLevel);
+
+    // 将 Delta 数据挂在 store.GFDEBTN 上，供 drawChart 使用
+    store.GFDEBTN.extraData = debtDelta;
+    store.GFDEBTN.extraLabel = "Δ (Change)";
   }
+  // -----------------------
 
-  // GFDEBTN Δ：基于“裁剪后的 GFDEBTN”生成（自然也是最近3年）
-  const debtLevel = store.GFDEBTN?.data || [];
-  const debtDelta = toDeltaSeries(debtLevel);
-  store.GFDEBTN_DELTA = {
-    seriesId: "GFDEBTN_DELTA",
-    updatedAt: store.GFDEBTN?.updatedAt || new Date().toISOString(),
-    points: debtDelta.length,
-    data: debtDelta
-  };
-
-  // TLT 信号
+  // TLT 信号计算 (保持不变)
   const acmtp10 = store.THREEFYTP10?.data?.at(-1)?.value;
   const dgs10 = store.DGS10?.data?.at(-1)?.value;
   const vix = store.VIXCLS?.data?.at(-1)?.value;
@@ -176,17 +248,26 @@ async function renderAll() {
   document.getElementById("tltReason").textContent =
     reasons.length ? `触发因素：${reasons.join("；")}` : "";
 
-  // 8 个卡片
-  const ids = [...index.series, "GFDEBTN_DELTA"];
+  // 生成卡片列表
+  // 注意：这里去掉了 "GFDEBTN_DELTA"，因为它现在合并进 GFDEBTN 了
+  const ids = [...index.series];
 
-  // grid
+  // 渲染 HTML Grid
   grid.innerHTML = ids
     .map(id => renderSeriesCard(id, store[id]))
     .join("");
 
-  // charts
+  // 绘制图表
   for (const id of ids) {
-    drawChart(id, SERIES_META[id] || id, store[id]?.data || []);
+    const item = store[id];
+    // 调用修改后的 drawChart，传入 extraData (如果存在)
+    drawChart(
+      id,
+      SERIES_META[id] || id,
+      item?.data || [],
+      item?.extraData, // 传入第二组数据
+      item?.extraLabel // 传入第二组标签
+    );
   }
 }
 
